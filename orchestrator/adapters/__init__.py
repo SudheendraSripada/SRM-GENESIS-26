@@ -9,6 +9,7 @@ from orchestrator.adapters.spec_adapter import (
     build_safety_policy,
     resolve_payload_body,
     parse_duration_seconds,
+    normalize_threshold_rule,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "build_safety_policy",
     "resolve_payload_body",
     "parse_duration_seconds",
+    "normalize_threshold_rule",
 ]

@@ -5,9 +5,20 @@ into FastAPI Validator TestSpec models for progressive verification and k6 compi
 
 from datetime import datetime, timezone
 import json
+from pathlib import Path
 import re
+import sys
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field
+
+# Ensure workspace paths are available
+_workspace_root = Path(__file__).resolve().parent.parent.parent
+_agents_src = _workspace_root / "agents" / "src"
+_validator_root = _workspace_root / "validator"
+
+for _p in [str(_workspace_root), str(_agents_src), str(_validator_root)]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 # Agent models (read-only input contracts)
 from performance_testing_ai.models.test_specification import (
@@ -57,7 +68,7 @@ class AdaptationResult(BaseModel):
     Result returned by adapt_specification containing the validator-compliant TestSpec
     and any timeline events emitted during transformation.
     """
-    spec: TestSpec = Field(..., description="Validator-compliant TestSpec instance")
+    spec: Union[TestSpec, Dict[str, Any]] = Field(..., description="Validator-compliant TestSpec instance or dictionary")
     events: List[AgentEvent] = Field(
         default_factory=list,
         description="Chronological events captured during adaptation",
@@ -65,10 +76,14 @@ class AdaptationResult(BaseModel):
 
     def to_dict(self) -> Dict[str, Any]:
         """Returns the TestSpec representation as a pure Python dictionary."""
+        if isinstance(self.spec, dict):
+            return self.spec
         return self.spec.model_dump()
 
 
 _DURATION_PATTERN = re.compile(r"(\d+)\s*(h|m|s)?", re.IGNORECASE)
+_VARIABLE_PATTERN = re.compile(r"(?:\$\{([a-zA-Z0-9_\-]+)\}|\{\{([a-zA-Z0-9_\-]+)\}\})")
+_COMPOSITE_METRIC_RE = re.compile(r"^([a-zA-Z0-9_\-]+)(?:\(([^)]+)\))?$")
 
 # Standard type keywords used in payload schemas
 _TYPE_DESCRIPTORS = frozenset({
@@ -79,6 +94,21 @@ _TYPE_DESCRIPTORS = frozenset({
     "dict", "object", "json",
     "list", "array",
 })
+
+# Semantic metric aliases mapping to canonical k6 metrics
+_METRIC_ALIASES: Dict[str, str] = {
+    "error_rate": "http_req_failed",
+    "errors": "http_req_failed",
+    "failed_requests": "http_req_failed",
+    "error": "http_req_failed",
+    "latency": "http_req_duration",
+    "response_time": "http_req_duration",
+    "duration": "http_req_duration",
+    "response_duration": "http_req_duration",
+    "throughput": "http_reqs",
+    "rps": "http_reqs",
+    "requests": "http_reqs",
+}
 
 
 def parse_duration_seconds(val: Any) -> int:
@@ -108,36 +138,62 @@ def parse_duration_seconds(val: Any) -> int:
     return 60
 
 
+def _coerce_data_plan(
+    test_data_plan: Optional[Union[TestDataPlan, Dict[str, Any]]],
+) -> Optional[TestDataPlan]:
+    """Ensures test_data_plan is a typed TestDataPlan model if possible."""
+    if test_data_plan is None:
+        return None
+    if isinstance(test_data_plan, TestDataPlan):
+        return test_data_plan
+    if isinstance(test_data_plan, dict):
+        try:
+            return TestDataPlan(**test_data_plan)
+        except Exception:
+            return None
+    return None
+
+
 def _resolve_scalar_value(
     field_name: str,
     type_or_val: Any,
-    data_plan: Optional[TestDataPlan] = None,
+    data_plan: Optional[Union[TestDataPlan, Dict[str, Any]]] = None,
 ) -> Any:
     """
     Resolves an individual field in a payload schema from type descriptions
-    into concrete, realistic mock data using heuristics and TestDataPlan rules.
+    or template placeholders into concrete, realistic mock data using
+    heuristics and TestDataPlan rules.
     """
-    val_str = str(type_or_val).strip().lower()
+    plan = _coerce_data_plan(data_plan)
+    val_str = str(type_or_val).strip()
+
+    # Check for template variable placeholders like "${cart_id}" or "{{cart_id}}"
+    var_match = _VARIABLE_PATTERN.match(val_str)
+    if var_match:
+        inner_var = var_match.group(1) or var_match.group(2)
+        return _resolve_scalar_value(inner_var, "string", plan)
+
+    val_lower = val_str.lower()
 
     # If it's not a recognized type descriptor, it is already a concrete value
-    if val_str not in _TYPE_DESCRIPTORS:
+    if val_lower not in _TYPE_DESCRIPTORS:
         return type_or_val
 
     field_lower = field_name.lower()
 
     # 1. Match against parameterization rules from TestDataPlan
-    if data_plan and hasattr(data_plan, "parameterization_rules") and data_plan.parameterization_rules:
-        for rule in data_plan.parameterization_rules:
+    if plan and plan.parameterization_rules:
+        for rule in plan.parameterization_rules:
             if rule.parameter_name.lower() == field_lower:
-                if val_str in ("int", "integer"):
+                if val_lower in ("int", "integer"):
                     return 1001
                 return f"{field_name}_test_1001"
 
     # 2. Match against datasets_needed fields in TestDataPlan
-    if data_plan and hasattr(data_plan, "datasets_needed") and data_plan.datasets_needed:
-        for ds in data_plan.datasets_needed:
+    if plan and plan.datasets_needed:
+        for ds in plan.datasets_needed:
             if field_name in ds.fields or field_lower in [f.lower() for f in ds.fields]:
-                if val_str in ("int", "integer"):
+                if val_lower in ("int", "integer"):
                     return 1001
                 if "token" in field_lower or "auth" in field_lower:
                     return f"tok_{ds.name}_test"
@@ -145,25 +201,25 @@ def _resolve_scalar_value(
                     return f"{field_name}_test_1"
 
     # 3. Type-based resolution with semantic name heuristics
-    if val_str in ("int", "integer"):
+    if val_lower in ("int", "integer"):
         if any(k in field_lower for k in ("qty", "quantity", "count", "num", "page", "limit", "items")):
             return 1
         if "id" in field_lower:
             return 1001
         return 1
 
-    if val_str in ("float", "number", "decimal"):
+    if val_lower in ("float", "number", "decimal"):
         if any(k in field_lower for k in ("price", "amount", "total", "cost", "fee", "rate")):
             return 19.99
         return 1.0
 
-    if val_str in ("bool", "boolean"):
+    if val_lower in ("bool", "boolean"):
         return True
 
-    if val_str in ("list", "array"):
+    if val_lower in ("list", "array"):
         return []
 
-    if val_str in ("dict", "object", "json"):
+    if val_lower in ("dict", "object", "json"):
         return {}
 
     # String type heuristics
@@ -193,7 +249,7 @@ def _resolve_scalar_value(
 
 def resolve_payload_body(
     step: Union[HttpStepSpec, Dict[str, Any], Any],
-    data_plan: Optional[TestDataPlan] = None,
+    data_plan: Optional[Union[TestDataPlan, Dict[str, Any]]] = None,
 ) -> Optional[Any]:
     """
     Resolves the payload body for an HttpStepSpec or step dictionary using type descriptions and TestDataPlan.
@@ -210,19 +266,99 @@ def resolve_payload_body(
     if not payload_schema:
         return None
 
+    if isinstance(payload_schema, str):
+        try:
+            payload_schema = json.loads(payload_schema)
+        except Exception:
+            pass
+
+    plan = _coerce_data_plan(data_plan)
+
     def _resolve_recursive(schema: Any, field_context: str = "item") -> Any:
         if isinstance(schema, dict):
             return {
                 k: _resolve_recursive(v, k) if isinstance(v, (dict, list))
-                else _resolve_scalar_value(k, v, data_plan)
+                else _resolve_scalar_value(k, v, plan)
                 for k, v in schema.items()
             }
         elif isinstance(schema, list):
             return [_resolve_recursive(item, field_context) for item in schema]
         else:
-            return _resolve_scalar_value(field_context, schema, data_plan)
+            return _resolve_scalar_value(field_context, schema, plan)
 
     return _resolve_recursive(payload_schema)
+
+
+def normalize_threshold_rule(t: Any) -> ThresholdRule:
+    """
+    Translates an agent ThresholdSpec or dict into a standard k6-compatible ThresholdRule.
+    Decomposes composite metrics like 'http_req_duration(p95)' or 'http_req_failed(rate)',
+    maps metric aliases ('error_rate' -> 'http_req_failed'), normalizes percentages
+    (e.g., 1% -> 0.01 for error rate), and converts time units ('2s' -> 2000.0 ms for duration).
+    """
+    raw_metric = getattr(t, "metric", None) or (t.get("metric") if isinstance(t, dict) else str(t))
+    operator = getattr(t, "operator", None) or (t.get("operator") if isinstance(t, dict) else None) or "<"
+    val = getattr(t, "value", None) if hasattr(t, "value") else (t.get("value") if isinstance(t, dict) else 500)
+    raw_agg = getattr(t, "aggregation", None) or (t.get("aggregation") if isinstance(t, dict) else None)
+    unit = str(getattr(t, "unit", None) or (t.get("unit") if isinstance(t, dict) else "")).lower()
+
+    # Parse composite metric e.g. "http_req_duration(p95)" -> ("http_req_duration", "p95")
+    base_metric = raw_metric.strip()
+    embedded_term = None
+    comp_match = _COMPOSITE_METRIC_RE.match(base_metric)
+    if comp_match:
+        base_metric = comp_match.group(1)
+        embedded_term = comp_match.group(2)
+
+    # Normalize base metric through known aliases
+    base_lower = base_metric.lower()
+    canonical_metric = _METRIC_ALIASES.get(base_lower, base_metric)
+    canonical_lower = canonical_metric.lower()
+
+    # Determine percentile and aggregation
+    pct: Optional[int] = None
+    agg: Optional[str] = None
+
+    active_agg = raw_agg or embedded_term
+    if active_agg:
+        agg_str = str(active_agg).strip().lower()
+        if agg_str.startswith("p") and agg_str[1:].isdigit():
+            pct = int(agg_str[1:])
+        elif agg_str in ("avg", "min", "max", "med", "rate", "count"):
+            agg = agg_str
+        else:
+            agg = agg_str
+
+    # Special handling for failure/error metrics
+    is_failure = "failed" in canonical_lower or "error" in canonical_lower
+    if is_failure:
+        canonical_metric = "http_req_failed"
+        agg = "rate"
+        pct = None
+        # Normalize error rate percentage (e.g. 1% or 5% -> 0.01 or 0.05)
+        if unit == "%" or val > 1.0:
+            if val >= 1.0 or (val > 0.05 and unit == "%"):
+                val = val / 100.0
+
+    # Special handling for duration metrics
+    is_duration = (
+        "duration" in canonical_lower
+        or "latency" in canonical_lower
+        or "connecting" in canonical_lower
+        or "waiting" in canonical_lower
+    )
+    if is_duration:
+        # Convert seconds to milliseconds if unit is 's' / 'sec' / 'seconds'
+        if unit in ("s", "sec", "second", "seconds"):
+            val = val * 1000.0
+
+    return ThresholdRule(
+        metric=canonical_metric,
+        percentile=pct,
+        aggregation=agg,
+        operator=operator,
+        value=val,
+    )
 
 
 def build_safety_policy(
@@ -290,8 +426,9 @@ def adapt_specification(
        and preserves test semantics.
     4. HTTP invariant checks: omits body for GET/HEAD methods, injects Content-Type: application/json
        for POST/PUT/PATCH when payload is present.
-    5. Threshold normalization: converts ThresholdSpec metrics and aggregations to standard k6 rules.
+    5. Threshold normalization: converts ThresholdSpec metrics, composite names, and aggregations to standard k6 rules.
     6. Assertion generation: maps expected_status_codes into CheckRule expressions.
+    7. Authentication resolution: resolves token templates and configures AuthConfig.
 
     Returns:
         AdaptationResult containing the adapted TestSpec and list of timeline AgentEvents.
@@ -304,12 +441,7 @@ def adapt_specification(
     else:
         spec = test_specification
 
-    data_plan: Optional[TestDataPlan] = None
-    if test_data_plan is not None:
-        if isinstance(test_data_plan, dict):
-            data_plan = TestDataPlan(**test_data_plan)
-        else:
-            data_plan = test_data_plan
+    data_plan: Optional[TestDataPlan] = _coerce_data_plan(test_data_plan)
 
     # -------------------------------------------------------------------------
     # 1. Target and Endpoint Resolution (Multi-step Simplification Gate)
@@ -382,13 +514,35 @@ def adapt_specification(
     )
 
     # -------------------------------------------------------------------------
-    # 2. Headers Configuration
+    # 2. Headers Configuration & Variable Resolution
     # -------------------------------------------------------------------------
     headers: Dict[str, str] = {}
     if spec.target and spec.target.default_headers:
         headers.update(spec.target.default_headers)
     if selected_step and selected_step.headers:
         headers.update(selected_step.headers)
+
+    # Resolve synthetic token value if data plan or user profiles present
+    synthetic_token = "synth_session_token_1"
+    if data_plan and getattr(data_plan, "datasets_needed", None):
+        for ds in data_plan.datasets_needed:
+            if "auth_token" in ds.fields or "token" in ds.fields:
+                synthetic_token = f"tok_{ds.name}_test"
+                break
+
+    # Resolve any ${var} or {{var}} placeholders in headers
+    resolved_headers: Dict[str, str] = {}
+    for h_key, h_val in headers.items():
+        if isinstance(h_val, str) and ("${" in h_val or "{{" in h_val):
+            def _replace_header_var(m: re.Match) -> str:
+                var_name = m.group(1) or m.group(2)
+                if "token" in var_name.lower() or "auth" in var_name.lower():
+                    return synthetic_token
+                return str(_resolve_scalar_value(var_name, "string", data_plan))
+            resolved_headers[h_key] = _VARIABLE_PATTERN.sub(_replace_header_var, h_val)
+        else:
+            resolved_headers[h_key] = h_val
+    headers = resolved_headers
 
     # -------------------------------------------------------------------------
     # 3. Payload Synthesis (Resolving schema types using TestDataPlan)
@@ -445,43 +599,11 @@ def adapt_specification(
     )
 
     # -------------------------------------------------------------------------
-    # 5. Thresholds Mapping
+    # 5. Thresholds Mapping & Canonical Normalization
     # -------------------------------------------------------------------------
     threshold_rules: List[ThresholdRule] = []
     for t in (spec.thresholds or []):
-        metric = t.metric
-        operator = t.operator or "<"
-        val = t.value
-        metric_lower = metric.lower()
-        is_failure = "failed" in metric_lower or "error" in metric_lower
-
-        if is_failure:
-            # If expressed as percentage > 1.0 (e.g. 1% or 5%), normalize to rate fraction
-            if val > 1.0 and getattr(t, "unit", "") == "%":
-                val = val / 100.0
-            agg = "rate"
-            pct = None
-        else:
-            pct = None
-            agg = None
-            if t.aggregation:
-                agg_lower = t.aggregation.lower()
-                if agg_lower.startswith("p") and agg_lower[1:].isdigit():
-                    pct = int(agg_lower[1:])
-                elif agg_lower in ("avg", "min", "max", "med", "rate", "count"):
-                    agg = agg_lower
-                else:
-                    agg = t.aggregation
-
-        threshold_rules.append(
-            ThresholdRule(
-                metric=metric,
-                percentile=pct,
-                aggregation=agg,
-                operator=operator,
-                value=val,
-            )
-        )
+        threshold_rules.append(normalize_threshold_rule(t))
 
     # -------------------------------------------------------------------------
     # 6. Checks & Assertion Generation
@@ -508,15 +630,21 @@ def adapt_specification(
     # 7. Authentication Configuration
     # -------------------------------------------------------------------------
     auth_config = AuthConfig(type="none")
-    has_auth_header = any(k.lower() == "authorization" for k in headers)
+    auth_header = next((v for k, v in headers.items() if k.lower() == "authorization"), None)
     auth_reqs = " ".join(spec.authentication_requirements or []).lower()
 
-    if not has_auth_header and auth_reqs:
+    if auth_header:
+        header_lower = auth_header.lower().strip()
+        if header_lower.startswith("bearer "):
+            token_extracted = auth_header.strip()[7:].strip()
+            auth_config = AuthConfig(type="bearer", token=token_extracted or synthetic_token)
+        elif header_lower.startswith("basic "):
+            auth_config = AuthConfig(type="basic", username="test_user", password="test_password")
+        else:
+            auth_config = AuthConfig(type="bearer", token=synthetic_token)
+    elif auth_reqs:
         if "bearer" in auth_reqs or "token" in auth_reqs or "oauth" in auth_reqs:
-            token_val = "test_bearer_token"
-            if data_plan and getattr(data_plan, "user_profiles", None):
-                token_val = "synth_session_token_1"
-            auth_config = AuthConfig(type="bearer", token=token_val)
+            auth_config = AuthConfig(type="bearer", token=synthetic_token)
         elif "basic" in auth_reqs:
             auth_config = AuthConfig(type="basic", username="test_user", password="test_password")
 
