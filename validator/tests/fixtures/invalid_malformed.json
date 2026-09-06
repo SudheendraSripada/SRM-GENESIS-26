@@ -1,0 +1,9 @@
+{
+  "version": "1.0",
+  "test": {
+    "type": "load",
+  },
+  "target": {
+    "base_url": "https://example.com"
+  }
+}

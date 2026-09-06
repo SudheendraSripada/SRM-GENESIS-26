@@ -1,0 +1,57 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "test_id": "stress_auth_01",
+    "name": "Login Stress Test",
+    "description": "Progressive stress testing of authentication gateway"
+  },
+  "test": {
+    "type": "stress",
+    "protocol": "http"
+  },
+  "target": {
+    "base_url": "https://example.com",
+    "endpoint": "/api/v1/login",
+    "method": "POST",
+    "timeout_ms": 5000
+  },
+  "load": {
+    "strategy": "stages",
+    "start_vus": 10,
+    "target_vus": 100,
+    "duration_seconds": 300
+  },
+  "stages": [
+    { "duration_seconds": 60, "target_vus": 20 },
+    { "duration_seconds": 120, "target_vus": 50 },
+    { "duration_seconds": 120, "target_vus": 100 }
+  ],
+  "headers": {
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+  },
+  "payload": {
+    "type": "json",
+    "body": {
+      "username": "{{username}}",
+      "password": "{{password}}"
+    }
+  },
+  "thresholds": [
+    {
+      "metric": "http_req_duration",
+      "percentile": 95,
+      "operator": "<",
+      "value": 500
+    },
+    {
+      "metric": "http_req_failed",
+      "aggregation": "rate",
+      "operator": "<",
+      "value": 0.02
+    }
+  ],
+  "checks": [
+    { "name": "status is 200", "expression": "r.status === 200" }
+  ]
+}

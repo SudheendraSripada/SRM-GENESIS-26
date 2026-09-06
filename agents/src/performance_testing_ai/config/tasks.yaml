@@ -1,0 +1,155 @@
+﻿analyze_requirements_task:
+  description: |
+    Analyze the user natural language performance testing request: "{user_request}".
+
+    INPUT CONTEXT:
+    - User Natural Language Request: "{user_request}"
+
+    REASONING & EXTRACTION STEPS:
+    1. Identify the target application or system under test.
+    2. Check if a base URL was explicitly provided. If absent, set target_base_url=None and record in missing_information.
+    3. Determine the expected concurrent virtual users (expected_users) and test duration.
+    4. Deduce the appropriate test_type based on the user's objective:
+       - 'load': Verifying system capability under expected normal/peak load (e.g., "handle 500 concurrent users").
+       - 'stress': Finding the system breaking point or measuring degradation past normal capacity.
+       - 'soak': Long-duration testing to observe memory, connection, or resource leaks.
+       - 'baseline': Measuring single-user or low-concurrency latency baseline.
+    5. Extract all performance goals and quantitative thresholds (e.g. latency percentiles like p95, p99, and error rates).
+    6. Extract endpoints and HTTP methods.
+       - CRITICAL RULE: If an endpoint was not explicitly provided by the user, you may infer a logical endpoint
+         (e.g., '/api/checkout' for checkout) BUT you MUST set is_assumed=True on that EndpointSpec.
+       - NEVER claim an inferred endpoint or base URL as an established fact.
+    7. Record any missing parameters in missing_information and all explicit deductions in assumptions.
+  expected_output: >
+    A fully populated RequirementSpec object with validated fields, explicit assumptions, and honesty about missing information.
+  agent: requirement_analyst
+
+create_performance_plan_task:
+  description: |
+    Convert the RequirementSpec from the previous task into an engineering-grade PerformancePlan.
+
+    INPUT CONTEXT:
+    - RequirementSpec: Provided by the Requirement Analyst task.
+
+    PLANNING & STAGING STEPS:
+    1. Review the requirement's test_type, expected_users, duration, and thresholds.
+    2. Formulate a clear, testable engineering objective for this test plan.
+    3. Design a realistic, multi-stage workload progression in 'stages':
+       - NEVER jump straight from 0 to peak VUs in a single abrupt step.
+       - Design at least three phases:
+         a) Ramp-up stage(s): Gradual acceleration to warm caches and prevent connection storms (e.g., 2m to target VUs).
+         b) Steady-state stage: Sustained load to measure performance equilibrium (e.g., 5m at target VUs).
+         c) Ramp-down stage: Controlled deceleration to observe system recovery (e.g., 1m to 0 VUs).
+       - Ensure every StageSpec has a valid duration string ending in 's', 'm', or 'h' and a non-negative target_vus.
+    4. Set target_vus equal to the target concurrency.
+    5. Set total duration string representing the sum of all stages.
+    6. Preserve the user's explicit thresholds (e.g., p95 < 500ms, error rate < 1%).
+    7. Define concrete success_criteria and document planning assumptions in assumptions.
+  expected_output: >
+    A fully populated PerformancePlan object defining stage progressions, concurrency, thresholds, and success criteria.
+  agent: performance_planner
+
+plan_test_data_task:
+  description: |
+    Analyze the RequirementSpec and PerformancePlan to create a comprehensive TestDataPlan.
+
+    INPUT CONTEXT:
+    - RequirementSpec: Target application, endpoints, and concurrency.
+    - PerformancePlan: Stage progression, peak VUs, and test duration.
+
+    DATA MODELING STEPS:
+    1. Determine the total virtual user accounts needed (users_required) based on peak VUs and pacing.
+    2. Specify whether unique accounts are mandatory (unique_users_required).
+    3. Outline payload_requirements for all HTTP requests involved in the test.
+    4. Specify product_data_requirements (e.g., active cart pools, catalog items, SKUs).
+    5. Detail authentication_requirements (e.g., OAuth2 bearer tokens, API keys, session cookies).
+    6. Identify correlation_requirements: Dynamic values that must be captured from one response and injected into the next.
+    7. Formulate a deterministic data_generation_strategy:
+       - CRITICAL RULE: Never generate millions of individual raw records in your response!
+       - Instead, specify deterministic generation rules (e.g., Faker seeding, indexed range pools, pre-seeded CSV fixtures)
+         that downstream execution scripts will use.
+    8. Document data lifecycle and cleanup assumptions in assumptions.
+  expected_output: >
+    A fully populated TestDataPlan object detailing data sizing, correlation, authentication, and deterministic generation rules.
+  agent: test_data_agent
+
+build_workload_specification_task:
+  description: |
+    Synthesize the RequirementSpec, PerformancePlan, and TestDataPlan into an execution-ready, declarative TestSpecification.
+
+    INPUT CONTEXT:
+    - RequirementSpec: System under test and thresholds.
+    - PerformancePlan: Workload stages and target VUs.
+    - TestDataPlan: User profiles, payloads, and correlation dependencies.
+
+    SPECIFICATION ASSEMBLY STEPS:
+    1. Define the target system configuration (TargetSystemSpec with base_url, default headers, timeout).
+    2. Construct the request_sequence of HTTP interaction steps:
+       - For each HttpStepSpec: specify name, endpoint (must start with '/'), method (GET, POST, etc.),
+         headers, payload_schema descriptions, expected_status_codes, and think_time_seconds.
+    3. Map workload stages directly from the PerformancePlan into 'load'.
+    4. Map thresholds directly from previous stages.
+    5. Summarize data_requirements and authentication_requirements.
+    6. Establish rigid SafetyConstraintsSpec:
+       - max_vus: Hard upper concurrency limit (e.g., target VUs + 10% safety buffer).
+       - max_duration_seconds: Hard upper bound on test duration in seconds.
+       - allowed_domains: Whitelist of allowed test domains (e.g. staging-ecom.local, localhost, 127.0.0.1).
+       - max_rps: Rate-limiting ceiling to protect infrastructure.
+    7. CRITICAL SAFETY RULE: You are defining WHAT to test declaratively.
+       Do NOT write executable JavaScript, do NOT execute Python, and do NOT call k6, Docker, or shell commands.
+  expected_output: >
+    A fully populated, declarative TestSpecification object ready for compilation by future execution engines.
+  agent: workload_builder
+
+critique_and_validate_safety_task:
+  description: |
+    Act as the final independent gatekeeper prior to test execution by auditing the proposed TestSpecification.
+
+    INPUT CONTEXT:
+    - TestSpecification: The complete test specification produced by the Workload Builder.
+
+    AUDIT INSTRUCTIONS (10 VALIDATION CATEGORIES):
+    1. TARGET_VALIDITY: Check that base_url is non-empty, well-formed, and points to an authorized non-production environment.
+    2. ENDPOINT_METHOD_VALIDITY: Ensure all endpoints start with '/' and use valid HTTP methods.
+    3. LOAD_LEVELS: Verify that all stage VUs are <= safety_constraints.max_vus and non-negative.
+    4. DURATION: Verify that total workload duration does not exceed safety_constraints.max_duration_seconds.
+    5. STAGE_PROGRESSION: Ensure stages are non-empty and logically ramp up rather than jumping instantaneously.
+    6. THRESHOLDS: Ensure quantitative thresholds are present with valid positive targets.
+    7. AUTH_DATA_DEPENDENCIES: Ensure required authentication and data prerequisites are clearly accounted for.
+    8. AMBIGUITY: Verify that all parameters and payload requirements are clear and deterministic.
+    9. SAFETY_LIMITS: Confirm circuit-breaker thresholds and allowed domain whitelisting.
+    10. USER_OBJECTIVE_ALIGNMENT: Ensure the specification faithfully implements the user's original performance goals.
+
+    DECISION LOGIC:
+    - Set approved = False if any critical or blocking safety rule is violated (e.g. unauthorized target, load exceeding safety limits, empty request sequence).
+      Add each violation to 'issues' and prescribe remediations in 'required_changes'.
+    - Set approved = True only if the specification is valid, safe, and ready for execution. Add non-critical items to 'warnings'.
+    - Populate 'safety_checks' with individual evaluations for all 10 categories.
+  expected_output: >
+    A fully populated CriticResult object containing approval status, risk level, detailed safety checks, issues, and remediations.
+  agent: critic_agent
+
+analyze_performance_results_task:
+  description: |
+    Analyze the ExecutionResult from test execution against the original TestSpecification and thresholds.
+
+    INPUT CONTEXT:
+    - ExecutionResult: Metrics summary, latency percentiles, error rate, throughput, and threshold results.
+    - TestSpecification: Original performance thresholds and objectives.
+
+    ANALYSIS & DIAGNOSTICS STEPS:
+    1. Determine overall_status ('PASSED', 'FAILED', 'DEGRADED') based on threshold compliance.
+    2. Compile empirical observations:
+       - CRITICAL RULE: Observations must record strictly verified, measurable facts from the ExecutionResult.
+       - Cite the exact evidence_source for every observed fact (e.g., 'metrics.p95_ms', 'metrics.error_rate').
+    3. Formulate hypotheses:
+       - Technical explanations for observed performance behavior (e.g. latency degradation under high load).
+       - Every hypothesis MUST declare a confidence_level ('low', 'medium', 'high') and specify the exact
+         required_evidence_to_confirm (e.g. database query latency profiling, thread pool telemetry).
+       - NEVER state a hypothesis as an established root cause without evidence!
+    4. Identify bottleneck indicators (suspected component, observed evidence, severity).
+    5. Detail degradation_point (concurrency or throughput where performance deteriorated).
+    6. Provide actionable engineering recommendations, assess confidence (0.0 to 1.0), and document limitations.
+  expected_output: >
+    A fully populated AnalysisResult object strictly distinguishing empirical observations from unproven hypotheses.
+  agent: performance_analyst

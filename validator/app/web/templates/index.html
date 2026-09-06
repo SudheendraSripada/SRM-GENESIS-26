@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>k6 AI Validation & Compilation Engine</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <header>
+    <div class="logo-group">
+      <div class="logo-badge">k6 COMPILER</div>
+      <h1>AI Validation & Compilation Pipeline</h1>
+    </div>
+
+    <div class="preset-controls">
+      <select id="preset-select">
+        <option value="">Loading test presets...</option>
+      </select>
+      <button id="btn-format">Format JSON</button>
+      <button id="btn-repair" class="repair-btn">Auto-Repair</button>
+      <button id="btn-validate" class="primary">Validate & Compile</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Left Pane: JSON Editor -->
+    <section class="editor-panel">
+      <div class="panel-header">
+        <span>Raw AI JSON Packet (Input)</span>
+        <span style="color: var(--text-secondary); font-size: 11px;">JSON Contract v1.0</span>
+      </div>
+      <div class="editor-container">
+        <textarea id="json-input" spellcheck="false" placeholder="Paste or edit AI JSON specification here..."></textarea>
+      </div>
+      <div class="panel-footer">
+        <span style="font-size: 12px; color: var(--text-secondary);">Single-pass O(N) syntax checks & structural typing</span>
+        <button id="btn-copy-input" style="font-size: 11px;" onclick="navigator.clipboard.writeText(document.getElementById('json-input').value)">Copy JSON</button>
+      </div>
+    </section>
+
+    <!-- Right Pane: Pipeline Stepper & Diagnostics -->
+    <section class="results-panel">
+      <!-- 8-Stage Pipeline Stepper -->
+      <div class="pipeline-stepper">
+        <div id="stage-syntax" class="stage-pill">
+          <div class="stage-dot"></div>
+          <span>1. Syntax</span>
+        </div>
+        <div id="stage-schema" class="stage-pill">
+          <div class="stage-dot"></div>
+          <span>2. Schema</span>
+        </div>
+        <div id="stage-constraints" class="stage-pill">
+          <div class="stage-dot"></div>
+          <span>3. Bounds</span>
+        </div>
+        <div id="stage-semantic" class="stage-pill">
+          <div class="stage-dot"></div>
+          <span>4. Semantic</span>
+        </div>
+        <div id="stage-cross_field" class="stage-pill">
+          <div class="stage-dot"></div>
+          <span>5. Cross</span>
+        </div>
+        <div id="stage-safety" class="stage-pill">
+          <div class="stage-dot"></div>
+          <span>6. Safety</span>
+        </div>
+        <div id="stage-k6_compatibility" class="stage-pill">
+          <div class="stage-dot"></div>
+          <span>7. k6 Compat</span>
+        </div>
+        <div id="stage-compilation" class="stage-pill">
+          <div class="stage-dot"></div>
+          <span>8. Compile</span>
+        </div>
+      </div>
+
+      <div class="results-content">
+        <!-- Summary Score Banner -->
+        <div class="summary-banner">
+          <div>
+            <div style="font-size: 11px; text-transform: uppercase; color: var(--text-secondary);">Pipeline Verdict</div>
+            <div id="status-badge" class="status-badge valid">VALID</div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 11px; text-transform: uppercase; color: var(--text-secondary);">Validation Score</div>
+            <div id="score-val" class="score-badge">100/100</div>
+          </div>
+        </div>
+
+        <!-- Diagnostics List -->
+        <div>
+          <h3 style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-secondary);">Diagnostic Errors & Policy Findings</h3>
+          <div id="diagnostics-list" class="diagnostics-list">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <!-- Compiled k6 Script Viewer -->
+        <div class="script-viewer-wrapper">
+          <div class="viewer-header">
+            <span>Compiled Deterministic k6 Script (ES6)</span>
+            <div>
+              <button id="btn-copy-script" style="font-size: 11px; padding: 4px 8px;">Copy Script</button>
+            </div>
+          </div>
+          <pre id="script-output">// Run validation to generate k6 test script...</pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

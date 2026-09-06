@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+@theme {
+  --font-editorial: 'Newsreader', Georgia, serif;
+  --font-headline: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-code: 'JetBrains Mono', monospace;
+}
+
+@layer base {
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: #0e0e10;
+    color: #e5e1e4;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #131315;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2a2c;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #353437;
+}
+
+/* Font helpers */
+.font-display-editorial {
+  font-family: 'Newsreader', Georgia, serif;
+}
+
+.font-label-code {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.font-label-caps {
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.06em;
+}

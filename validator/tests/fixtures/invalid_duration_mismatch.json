@@ -1,0 +1,18 @@
+{
+  "version": "1.0",
+  "test": { "type": "load" },
+  "target": {
+    "base_url": "https://example.com",
+    "endpoint": "/api",
+    "method": "GET"
+  },
+  "load": {
+    "start_vus": 5,
+    "target_vus": 20,
+    "duration_seconds": 100
+  },
+  "stages": [
+    { "duration_seconds": 60, "target_vus": 10 },
+    { "duration_seconds": 120, "target_vus": 20 }
+  ]
+}

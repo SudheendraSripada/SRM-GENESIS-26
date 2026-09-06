@@ -1,0 +1,27 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "name": "Health Check Baseline",
+    "description": "Baseline performance for health API"
+  },
+  "test": {
+    "type": "baseline",
+    "protocol": "http"
+  },
+  "target": {
+    "base_url": "https://httpbin.org",
+    "endpoint": "/get",
+    "method": "GET"
+  },
+  "load": {
+    "strategy": "constant",
+    "start_vus": 5,
+    "target_vus": 5,
+    "duration_seconds": 30
+  },
+  "stages": [],
+  "thresholds": {
+    "http_req_duration": "p(95)<300",
+    "http_req_failed": "rate<0.01"
+  }
+}

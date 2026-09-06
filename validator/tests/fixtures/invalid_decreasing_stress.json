@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "test": { "type": "stress" },
+  "target": {
+    "base_url": "https://example.com",
+    "endpoint": "/search",
+    "method": "GET"
+  },
+  "load": {
+    "start_vus": 200,
+    "target_vus": 50,
+    "duration_seconds": 180
+  },
+  "stages": [
+    { "duration_seconds": 60, "target_vus": 200 },
+    { "duration_seconds": 60, "target_vus": 100 },
+    { "duration_seconds": 60, "target_vus": 50 }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "test": { "type": "load" },
+  "target": {
+    "base_url": "http://169.254.169.254",
+    "endpoint": "/latest/meta-data",
+    "method": "GET"
+  },
+  "load": {
+    "start_vus": 1,
+    "target_vus": 10,
+    "duration_seconds": 60
+  }
+}

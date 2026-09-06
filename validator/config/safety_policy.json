@@ -1,0 +1,23 @@
+{
+  "max_vus": 1000,
+  "max_duration_seconds": 1800,
+  "max_stages": 20,
+  "min_vus": 1,
+  "min_duration_seconds": 1,
+  "allow_localhost": true,
+  "allowed_targets": [
+    "http://localhost",
+    "http://127.0.0.1",
+    "https://example.com",
+    "http://test-api",
+    "https://staging.internal.net",
+    "https://httpbin.org",
+    "http://httpbin.org"
+  ],
+  "blocked_cidrs": [
+    "169.254.169.254/32",
+    "224.0.0.0/4",
+    "240.0.0.0/4",
+    "255.255.255.255/32"
+  ]
+}
