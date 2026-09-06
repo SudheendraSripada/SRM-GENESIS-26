@@ -6,12 +6,22 @@ interface ExecutionTraceModalProps {
   isOpen: boolean;
   onClose: () => void;
   runId: string;
+  events?: Array<{
+    event_id?: string;
+    state: string;
+    event_type: string;
+    source: string;
+    message: string;
+    timestamp: string;
+    details?: any;
+  }>;
 }
 
 export const ExecutionTraceModal: React.FC<ExecutionTraceModalProps> = ({
   isOpen,
   onClose,
   runId,
+  events,
 }) => {
   if (!isOpen) return null;
 
@@ -49,6 +59,30 @@ export const ExecutionTraceModal: React.FC<ExecutionTraceModalProps> = ({
 
         {/* Trace Waterfall */}
         <div className="p-5 overflow-y-auto space-y-4">
+          {events && events.length > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center justify-between font-label-code text-[11px] text-[#ffb77d] pb-2 mb-2 border-b border-[#353437]">
+                <span>State Machine Execution Events ({events.length} events)</span>
+                <span>Deterministic Verification Pipeline</span>
+              </div>
+              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                {events.map((evt, idx) => (
+                  <div key={idx} className="p-2 bg-[#1c1b1d] border border-[#353437]/60 rounded-[0.125rem] font-label-code text-[11px] flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="px-1.5 py-0.5 bg-[#ffb77d]/10 text-[#ffb77d] rounded-[0.125rem] text-[10px]">
+                        {evt.state}
+                      </span>
+                      <span className="text-[#e5e1e4] truncate max-w-md">{evt.message}</span>
+                    </div>
+                    <span className="text-[#dbc2b0]/50 text-[10px] shrink-0">
+                      {new Date(evt.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between font-label-code text-[11px] text-[#dbc2b0]/70 pb-2 border-b border-[#353437]">
             <span>Operation & Span Hierarchy</span>
             <span>Offset & Duration ({totalDurationMs}ms total)</span>

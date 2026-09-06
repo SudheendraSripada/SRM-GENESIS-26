@@ -25,6 +25,22 @@ interface RunTimelineProps {
   onStopRun: () => void;
   isRunning: boolean;
   onSendMessage: (msg: string) => void;
+  liveEvents?: Array<{
+    event_id?: string;
+    state: string;
+    event_type: string;
+    source: string;
+    message: string;
+    timestamp: string;
+    details?: any;
+  }>;
+  telemetry?: {
+    requests?: number;
+    rps?: number;
+    avg_latency_ms?: number;
+    p95_ms?: number;
+    error_rate?: number;
+  };
 }
 
 export const RunTimeline: React.FC<RunTimelineProps> = ({
@@ -37,6 +53,8 @@ export const RunTimeline: React.FC<RunTimelineProps> = ({
   onStopRun,
   isRunning,
   onSendMessage,
+  liveEvents,
+  telemetry,
 }) => {
   const [interveneInput, setInterveneInput] = useState('');
   const [activeStepExpanded, setActiveStepExpanded] = useState<string>(
@@ -48,9 +66,9 @@ export const RunTimeline: React.FC<RunTimelineProps> = ({
   );
 
   // Live timer for Testing stage
-  const [elapsedSeconds, setElapsedSeconds] = useState(48.2);
-  const [latencyValue, setLatencyValue] = useState(438);
-  const [rpsValue, setRpsValue] = useState(411);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0.0);
+  const [latencyValue, setLatencyValue] = useState(284);
+  const [rpsValue, setRpsValue] = useState(134);
   const [assertionLogs, setAssertionLogs] = useState<AssertionLog[]>(INITIAL_ASSERTION_LOGS);
   const [streamInterventions, setStreamInterventions] = useState<string[]>([]);
   const terminalEndRef = useRef<HTMLDivElement>(null);
@@ -61,6 +79,31 @@ export const RunTimeline: React.FC<RunTimelineProps> = ({
     else if (currentScreen === 'validating') setActiveStepExpanded('validating');
     else if (currentScreen === 'testing') setActiveStepExpanded('testing');
   }, [currentScreen]);
+
+  // Synchronize live events from orchestrator
+  useEffect(() => {
+    if (liveEvents && liveEvents.length > 0) {
+      const logs: AssertionLog[] = liveEvents.map((evt, idx) => ({
+        id: evt.event_id || `evt-${idx}`,
+        timestamp: new Date(evt.timestamp || Date.now()).toLocaleTimeString(),
+        text: `[${(evt.source || 'ORCHESTRATOR').toUpperCase()}] ${evt.message}`,
+        isAssertPass: evt.event_type?.includes('completed') || evt.message?.includes('PASSED'),
+        isActive: idx === liveEvents.length - 1 && isRunning,
+      }));
+      setAssertionLogs(logs);
+      if (terminalEndRef.current) {
+        terminalEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  }, [liveEvents, isRunning]);
+
+  // Synchronize live telemetry
+  useEffect(() => {
+    if (telemetry) {
+      if (telemetry.p95_ms) setLatencyValue(Math.round(telemetry.p95_ms));
+      if (telemetry.rps) setRpsValue(Math.round(telemetry.rps));
+    }
+  }, [telemetry]);
 
   // Live Telemetry simulation while in 'testing' screen
   useEffect(() => {

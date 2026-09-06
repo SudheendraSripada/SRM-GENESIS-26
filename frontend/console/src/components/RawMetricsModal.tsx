@@ -54,7 +54,7 @@ export const RawMetricsModal: React.FC<RawMetricsModalProps> = ({
                 Response Time Quantiles (p95 target ≤ {runData.targetSla}ms)
               </span>
               <span className="font-label-code text-[11px] text-[#ffb77d]">
-                Sample count: 18,420 requests
+                Sample count: {runData.executionMetrics ? runData.executionMetrics.requests.toLocaleString() : '18,420'} requests
               </span>
             </div>
             <div className="border border-[#353437] rounded-[0.125rem] overflow-hidden">
@@ -70,39 +70,29 @@ export const RawMetricsModal: React.FC<RawMetricsModalProps> = ({
                 <tbody className="divide-y divide-[#353437] text-[#e5e1e4]">
                   <tr className="hover:bg-[#201f22]/50">
                     <td className="p-2.5">p50 (Median)</td>
-                    <td className="p-2.5">184ms</td>
-                    <td className="p-2.5 text-[#ffb77d]">-316ms</td>
-                    <td className="p-2.5 text-[#ffb77d]">PASS</td>
-                  </tr>
-                  <tr className="hover:bg-[#201f22]/50">
-                    <td className="p-2.5">p75</td>
-                    <td className="p-2.5">242ms</td>
-                    <td className="p-2.5 text-[#ffb77d]">-258ms</td>
+                    <td className="p-2.5">{runData.executionMetrics ? `${runData.executionMetrics.p50_ms}ms` : '184ms'}</td>
+                    <td className="p-2.5 text-[#ffb77d]">{runData.executionMetrics ? `${runData.executionMetrics.p50_ms - runData.targetSla}ms` : '-316ms'}</td>
                     <td className="p-2.5 text-[#ffb77d]">PASS</td>
                   </tr>
                   <tr className="hover:bg-[#201f22]/50">
                     <td className="p-2.5">p90</td>
-                    <td className="p-2.5">388ms</td>
-                    <td className="p-2.5 text-[#ffb77d]">-112ms</td>
+                    <td className="p-2.5">{runData.executionMetrics ? `${runData.executionMetrics.p90_ms}ms` : '388ms'}</td>
+                    <td className="p-2.5 text-[#ffb77d]">{runData.executionMetrics ? `${runData.executionMetrics.p90_ms - runData.targetSla}ms` : '-112ms'}</td>
                     <td className="p-2.5 text-[#ffb77d]">PASS</td>
                   </tr>
                   <tr className="bg-[#ffb77d]/10 font-medium">
                     <td className="p-2.5 text-[#ffb77d]">p95 (Ceiling SLA)</td>
-                    <td className="p-2.5 text-[#ffb77d]">438ms</td>
-                    <td className="p-2.5 text-[#ffb77d]">-62ms</td>
-                    <td className="p-2.5 text-[#ffb77d]">NOMINAL</td>
+                    <td className="p-2.5 text-[#ffb77d]">{runData.executionMetrics ? `${runData.executionMetrics.p95_ms}ms` : '438ms'}</td>
+                    <td className="p-2.5 text-[#ffb77d]">{runData.executionMetrics ? `${runData.executionMetrics.p95_ms - runData.targetSla}ms` : '-62ms'}</td>
+                    <td className="p-2.5 text-[#ffb77d]">
+                      {runData.executionMetrics && runData.executionMetrics.p95_ms <= runData.targetSla ? 'COMPLIANT' : 'NOMINAL'}
+                    </td>
                   </tr>
                   <tr className="hover:bg-[#201f22]/50">
                     <td className="p-2.5">p99</td>
-                    <td className="p-2.5">489ms</td>
-                    <td className="p-2.5 text-[#ffb77d]">-11ms</td>
+                    <td className="p-2.5">{runData.executionMetrics ? `${runData.executionMetrics.p99_ms}ms` : '489ms'}</td>
+                    <td className="p-2.5 text-[#ffb77d]">{runData.executionMetrics ? `${runData.executionMetrics.p99_ms - runData.targetSla}ms` : '-11ms'}</td>
                     <td className="p-2.5 text-[#ffb77d]">ACCEPTABLE</td>
-                  </tr>
-                  <tr className="hover:bg-[#201f22]/50">
-                    <td className="p-2.5">Max Latency</td>
-                    <td className="p-2.5">512ms</td>
-                    <td className="p-2.5 text-[#ffb4ab]">+12ms</td>
-                    <td className="p-2.5 text-[#ffb4ab]">TAIL SPIKE</td>
                   </tr>
                 </tbody>
               </table>

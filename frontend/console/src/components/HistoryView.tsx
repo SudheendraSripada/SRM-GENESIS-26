@@ -5,9 +5,12 @@ import { RunData } from '../types';
 
 interface HistoryViewProps {
   onSelectRun: (run: RunData) => void;
+  runs?: RunData[];
 }
 
-export const HistoryView: React.FC<HistoryViewProps> = ({ onSelectRun }) => {
+export const HistoryView: React.FC<HistoryViewProps> = ({ onSelectRun, runs }) => {
+  const displayedRuns = runs && runs.length > 0 ? runs : MOCK_HISTORY_RUNS;
+
   return (
     <div id="history-view" className="flex flex-col w-full pb-16">
       {/* Header */}
@@ -19,13 +22,13 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onSelectRun }) => {
           </p>
         </div>
         <span className="font-label-code text-[11px] text-[#dbc2b0]/60">
-          Showing {MOCK_HISTORY_RUNS.length} verified runs
+          Showing {displayedRuns.length} verified runs
         </span>
       </div>
 
       {/* History Runs List */}
       <div className="border border-[#554336]/30 rounded-[0.25rem] divide-y divide-[#554336]/20 bg-[#1c1b1d] overflow-hidden">
-        {MOCK_HISTORY_RUNS.map((run) => (
+        {displayedRuns.map((run) => (
           <div
             key={run.id}
             onClick={() => onSelectRun(run)}

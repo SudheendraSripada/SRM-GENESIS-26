@@ -60,6 +60,26 @@ export interface RunData {
   analystProse: string;
   evaluator: string;
   evaluatorTarget: string;
+  compiledK6Script?: string;
+  executionMetrics?: {
+    requests: number;
+    rps: number;
+    avg_latency_ms: number;
+    p50_ms: number;
+    p90_ms: number;
+    p95_ms: number;
+    p99_ms: number;
+    error_rate: number;
+  };
+  rawEvents?: Array<{
+    event_id?: string;
+    state: string;
+    event_type: string;
+    source: string;
+    message: string;
+    timestamp: string;
+    details?: any;
+  }>;
 }
 
 export interface ProjectItem {

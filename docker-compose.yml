@@ -1,0 +1,58 @@
+services:
+  validator:
+    build:
+      context: ./validator
+      dockerfile: Dockerfile
+    container_name: genesis-validator
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - genesis-net
+
+  demo-api:
+    build:
+      context: ./demo-api
+      dockerfile: Dockerfile
+    container_name: genesis-demo-api
+    ports:
+      - "8088:8088"
+    environment:
+      - DEMO_API_LATENCY_MS=25.0
+      - DEMO_API_ERROR_RATE=0.001
+    networks:
+      - genesis-net
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: orchestrator/Dockerfile
+    container_name: genesis-orchestrator
+    ports:
+      - "8001:8001"
+    environment:
+      - VALIDATOR_URL=http://validator:8000
+      - DEMO_API_URL=http://demo-api:8088
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - validator
+      - demo-api
+    networks:
+      - genesis-net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: genesis-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - orchestrator
+    networks:
+      - genesis-net
+
+networks:
+  genesis-net:
+    driver: bridge

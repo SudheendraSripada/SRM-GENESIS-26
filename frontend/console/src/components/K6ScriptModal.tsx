@@ -6,25 +6,28 @@ interface K6ScriptModalProps {
   isOpen: boolean;
   onClose: () => void;
   runId: string;
+  scriptContent?: string;
 }
 
 export const K6ScriptModal: React.FC<K6ScriptModalProps> = ({
   isOpen,
   onClose,
   runId,
+  scriptContent,
 }) => {
   const [copied, setCopied] = useState(false);
+  const activeScript = scriptContent || MOCK_K6_SCRIPT;
 
   if (!isOpen) return null;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(MOCK_K6_SCRIPT);
+    navigator.clipboard.writeText(activeScript);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDownload = () => {
-    const blob = new Blob([MOCK_K6_SCRIPT], { type: 'text/javascript' });
+    const blob = new Blob([activeScript], { type: 'text/javascript' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -66,7 +69,7 @@ export const K6ScriptModal: React.FC<K6ScriptModalProps> = ({
         {/* Script Content */}
         <div className="p-4 bg-[#0e0e10] overflow-y-auto flex-1 font-label-code text-[12px] leading-relaxed select-text">
           <pre className="text-[#dbc2b0]">
-            <code>{MOCK_K6_SCRIPT}</code>
+            <code>{activeScript}</code>
           </pre>
         </div>
 
