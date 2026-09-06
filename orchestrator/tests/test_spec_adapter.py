@@ -37,6 +37,7 @@ from orchestrator.adapters.spec_adapter import (
     build_safety_policy,
     parse_duration_seconds,
     resolve_payload_body,
+    normalize_threshold_rule,
     AgentEvent,
     AdaptationResult,
 )
@@ -105,6 +106,33 @@ class TestSpecAdapterPayloadResolution:
         assert resolved["is_gift"] is True
         assert resolved["literal_val"] == "concrete_123"
 
+    def test_resolve_payload_with_dict_plan_and_template_variables(self):
+        step = HttpStepSpec(
+            name="Order Step",
+            endpoint="/api/orders",
+            method=HttpMethod.POST,
+            payload_schema={
+                "cart_id": "${cart_id}",
+                "item_id": "{{item_id}}",
+            },
+        )
+        data_plan_dict = {
+            "data_plan_id": "dp-dict",
+            "plan_id": "p-1",
+            "users_required": 5,
+            "data_generation_strategy": "test",
+            "parameterization_rules": [
+                {
+                    "parameter_name": "cart_id",
+                    "source_dataset": "carts",
+                    "selection_mode": "unique",
+                }
+            ],
+        }
+        resolved = resolve_payload_body(step, data_plan_dict)
+        assert resolved["cart_id"] == "cart_id_test_1001"
+        assert resolved["item_id"] == "sku_test_1001"
+
     def test_resolve_payload_nested(self):
         step_dict = {
             "name": "Order Step",
@@ -122,6 +150,42 @@ class TestSpecAdapterPayloadResolution:
         assert resolved["order"]["item_id"] == 1001
         assert resolved["order"]["customer_email"] == "test_user@example.com"
         assert resolved["items"] == ["sku_test_1001"]
+
+
+class TestSpecAdapterThresholdNormalization:
+    """Tests decomposition and canonical normalization of threshold metrics."""
+
+    def test_composite_metric_name_parsing(self):
+        rule = normalize_threshold_rule(
+            ThresholdSpec(metric="http_req_duration(p95)", value=500.0, operator="<")
+        )
+        assert rule.metric == "http_req_duration"
+        assert rule.percentile == 95
+        assert rule.operator == "<"
+        assert rule.value == 500.0
+
+    def test_failure_metric_parsing_and_percent_normalization(self):
+        rule1 = normalize_threshold_rule(
+            ThresholdSpec(metric="http_req_failed(rate)", value=0.01, operator="<")
+        )
+        assert rule1.metric == "http_req_failed"
+        assert rule1.aggregation == "rate"
+        assert rule1.value == 0.01
+
+        rule2 = normalize_threshold_rule(
+            ThresholdSpec(metric="error_rate", value=1.0, unit="%", operator="<")
+        )
+        assert rule2.metric == "http_req_failed"
+        assert rule2.aggregation == "rate"
+        assert rule2.value == 0.01
+
+    def test_duration_unit_conversion(self):
+        rule = normalize_threshold_rule(
+            ThresholdSpec(metric="latency", value=2.0, unit="s", operator="<=")
+        )
+        assert rule.metric == "http_req_duration"
+        assert rule.operator == "<="
+        assert rule.value == 2000.0
 
 
 class TestSpecAdapterMultiStepSimplification:
@@ -233,6 +297,30 @@ class TestSpecAdapterHttpInvariants:
         assert res.spec.payload.body == {"title": "Test Title"}
         assert res.spec.headers.get("Content-Type") == "application/json"
 
+    def test_header_variable_interpolation(self):
+        spec = TestSpecification(
+            test_id="spec-auth-interp",
+            test_name="Auth Interp",
+            objective="Test header interpolation",
+            test_type=TestType.LOAD,
+            target=TargetSystemSpec(base_url="https://example.com"),
+            load=[StageSpec(duration="1m", target_vus=10)],
+            request_sequence=[
+                HttpStepSpec(
+                    name="Auth Step",
+                    endpoint="/api/secure",
+                    method=HttpMethod.GET,
+                    headers={"Authorization": "Bearer ${auth_token}"},
+                ),
+            ],
+            safety_constraints=SafetyConstraintsSpec(max_vus=20, max_duration_seconds=120),
+        )
+        res = adapt_specification(spec, MOCK_TEST_DATA_PLAN)
+        assert "${auth_token}" not in res.spec.headers["Authorization"]
+        assert "tok_checkout_customers_test" in res.spec.headers["Authorization"]
+        assert res.spec.auth.type == "bearer"
+        assert res.spec.auth.token == "tok_checkout_customers_test"
+
 
 class TestSpecAdapterFullPipelineIntegration:
     """
@@ -268,6 +356,7 @@ class TestSpecAdapterFullPipelineIntegration:
         assert "http://staging-ecom.local/api/checkout" in val_result.compiled_k6_script
         assert "cart_id_test_1001" in val_result.compiled_k6_script
         assert "tok_test_payment_token" in val_result.compiled_k6_script
+        assert "${auth_token}" not in val_result.compiled_k6_script
 
     def test_dict_input_adaptation(self):
         spec_dict = MOCK_TEST_SPECIFICATION.model_dump()
@@ -277,6 +366,38 @@ class TestSpecAdapterFullPipelineIntegration:
         assert result.spec.metadata.test_id == "spec-ecom-500vu"
         assert result.spec.load.duration_seconds == 480
         assert result.spec.load.target_vus == 500
+
+    def test_composite_thresholds_full_validation_no_warnings(self):
+        spec = TestSpecification(
+            test_id="spec-composite-thresh",
+            test_name="Composite Thresholds",
+            objective="Verify zero warnings on composite thresholds",
+            test_type=TestType.LOAD,
+            target=TargetSystemSpec(base_url="https://example.com"),
+            load=[StageSpec(duration="1m", target_vus=10)],
+            thresholds=[
+                ThresholdSpec(metric="http_req_duration(p95)", value=500.0, operator="<"),
+                ThresholdSpec(metric="http_req_failed(rate)", value=0.01, operator="<"),
+                ThresholdSpec(metric="error_rate", value=1.0, unit="%", operator="<"),
+            ],
+            request_sequence=[
+                HttpStepSpec(
+                    name="Search",
+                    endpoint="/search",
+                    method=HttpMethod.GET,
+                    expected_status_codes=[200],
+                )
+            ],
+            safety_constraints=SafetyConstraintsSpec(max_vus=50, max_duration_seconds=300),
+        )
+        res = adapt_specification(spec)
+        policy = build_safety_policy(spec)
+        val = PipelineOrchestrator(policy=policy).run(res.to_dict())
+
+        assert val.status == PipelineStatus.VALID
+        assert val.errors == []
+        assert val.warnings == []
+        assert val.validation_score == 100
 
     def test_baseline_test_adaptation_and_validation(self):
         spec = TestSpecification(

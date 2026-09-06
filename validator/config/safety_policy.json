@@ -10,7 +10,10 @@
     "http://127.0.0.1",
     "https://example.com",
     "http://test-api",
+    "http://demo-api",
     "https://staging.internal.net",
+    "http://staging-ecom.local",
+    "https://staging-ecom.local",
     "https://httpbin.org",
     "http://httpbin.org"
   ],
