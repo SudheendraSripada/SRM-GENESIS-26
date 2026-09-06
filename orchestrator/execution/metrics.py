@@ -346,3 +346,4 @@ class MetricsEvaluator:
             breaking_point_vus=breaking_point,
             threshold_results=threshold_evals,
         )
+

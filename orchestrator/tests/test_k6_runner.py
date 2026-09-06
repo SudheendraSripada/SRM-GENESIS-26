@@ -171,3 +171,4 @@ def test_threshold_evaluator_and_decision():
     )
     assert degraded_decision.status == "DEGRADED"
     assert degraded_decision.decision == "SCALE_DOWN"
+

@@ -196,3 +196,4 @@ async def test_fastapi_endpoints():
         assert detail["run_id"] == run_id
         assert "events" in detail
         assert len(detail["events"]) > 0
+

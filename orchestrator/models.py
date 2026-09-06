@@ -77,3 +77,4 @@ class RunDetail(RunSummary):
     analysis_result: Optional[Dict[str, Any]] = None
     decision_result: Optional[Dict[str, Any]] = None
     events: List[AgentEvent] = Field(default_factory=list)
+

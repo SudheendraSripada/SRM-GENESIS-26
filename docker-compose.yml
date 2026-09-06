@@ -56,3 +56,4 @@ services:
 networks:
   genesis-net:
     driver: bridge
+

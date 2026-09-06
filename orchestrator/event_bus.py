@@ -41,3 +41,4 @@ class EventBus:
             except asyncio.QueueFull:
                 # Remove stale / blocked queue to protect event loop
                 pass
+

@@ -65,3 +65,4 @@ async def test_end_to_end_prompt_to_report_flow():
     finally:
         if os.path.exists(db_path):
             os.remove(db_path)
+
